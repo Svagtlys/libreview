@@ -35,6 +35,16 @@ class GlucoseReading():
         self._value = Value
         self._trendArrow = TrendArrow
 
-    
+"""    
+getconnections
+.get("data").get("connection").get("glucoseMeasurement") latest data
 
-    
+getgraph 
+
+.get("data").get("graphData")[0] = oldest (approx. 12 hours)
+.get("data").get("graphData")[1] = newest (approx 30 min delay)
+getlogbook
+
+.get("data")[0] = latest, but may have been hours ago
+.get("data")[last#] = oldest, up to 2 weeks ago
+"""
