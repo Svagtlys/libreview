@@ -19,7 +19,7 @@ class LibreViewAPI():
         """Initialize the API and store the auth so we can make requests."""
         self._auth = auth
     
-    async def 
+    # async def 
 
 
 class GlucoseReading():
