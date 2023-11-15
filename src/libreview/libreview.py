@@ -1,5 +1,8 @@
+from __future__ import annotations
 from .auth import Auth
+from collections import deque
 
+from .const import Endpoint
 
 
 class LibreViewAPI():
@@ -15,11 +18,23 @@ class LibreViewAPI():
         - Receive only data in the desired units (mg/dl or libreview-configured)
     """
 
-    def __init__(self, auth: Auth):
+    def __init__(self, auth: Auth, maxReadings: int=10) -> None:
         """Initialize the API and store the auth so we can make requests."""
         self._auth = auth
+        self._recentReadings = deque(maxlen=maxReadings)
+
+
+    async def authenticate(self) -> bool:
+        self._auth.authenticate()
     
-    # async def 
+    async def getLatestReading(self,connection: ) -> GlucoseReading:
+        
+        return GlucoseReading();
+
+    async def _whatDoYouEvenCallThis(self) -> None:
+        
+
+
 
 
 class GlucoseReading():

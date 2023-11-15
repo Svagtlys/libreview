@@ -31,8 +31,13 @@ class Auth():
         Uses username and password and raises additional errors.
         If redirect message received, will attempt to redirect manually.
         """
-
-        return await self.request(Endpoint.AUTH, data = self._authInfo)
+        try:
+            response = await self.request(Endpoint.AUTH, data = self._authInfo)
+        except:
+            raise
+        
+        return True
+        # match response.get("status")
         
     async def request(self, endpoint: Endpoint, **kwargs) -> ClientResponse:
         """Make a request."""
@@ -48,7 +53,7 @@ class Auth():
         method = Endpoint.endpoint.method
         path = Endpoint.endpoint.path
         
-        return await self._session.request(
+        response = await self._session.request(
             method, f"{self._host}/{path}", data, headers=headers,
         )
         # return raw data with no (?) error checking
