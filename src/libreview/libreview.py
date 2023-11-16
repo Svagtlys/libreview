@@ -27,11 +27,11 @@ class LibreViewAPI():
     async def authenticate(self) -> bool:
         self._auth.authenticate()
     
-    async def getLatestReading(self,connection: ) -> GlucoseReading:
+    async def getLatestReading(self,connection: int) -> GlucoseReading:
         
         return GlucoseReading();
 
-    async def _whatDoYouEvenCallThis(self) -> None:
+    # async def _whatDoYouEvenCallThis(self) -> None:
         
 
 
