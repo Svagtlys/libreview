@@ -2,7 +2,7 @@ from aiohttp import ClientSession, ClientResponse
 import asyncio
 
 from .const import Endpoint, HEADERS, DEFAULT_HOST
-from .exceptions import TOUNotAcceptedError, BadCredentialsError
+from .exceptions import TOUNotAcceptedError, BadCredentialsError, UnexpectedResponseError
 
 
 # KNOWN_ENDPOINTS
@@ -14,7 +14,10 @@ from .exceptions import TOUNotAcceptedError, BadCredentialsError
 
 
 class Auth():
-    """Creates an Auth object to pull data from LibreView using one set of account info"""
+    """
+    Creates an Auth object to pull data from LibreView using one set of account info.
+    Only returns raw data, to be used by other programs as desired
+    """
 
     def __init__(self, email: str, password: str) -> None:
         """Initialize Auth"""
@@ -36,32 +39,114 @@ class Auth():
         if not self._session.closed:
             await self._session.close()
 
-    async def _create_session(self):
-        self._session = ClientSession()
 
-
-    async def authenticate(self) -> ClientResponse:
+    async def authenticate(self) -> bool:
         """
         Tries to acquire a valid token with the LibreView API.
         Uses username and password and raises additional errors.
         If redirect message received, will attempt to redirect manually.
         """
         try:
-            response = await self.request(Endpoint.AUTH, data = self._authInfo)
+            response = await self._request(Endpoint.AUTH, data = self._authInfo)
+        except:
+            raise
+
+        try:
+            isAuth = await self._setAuthFromTicket(response)
+        except BadCredentialsError:
+            raise
+
+        return isAuth
+
+
+    async def getUser(self) -> dict:
+        try:
+            response = await self._request(Endpoint.GET_USER)
+        except:
+            raise
+
+        return response.get("data") #dict 
+
+    async def getAccount(self) -> dict:
+        try:
+            response = await self._request(Endpoint.GET_ACCOUNT)
+        except:
+            raise
+
+        return response.get("data") #dict
+    
+    async def getConnections(self) -> list:
+        try:
+            response = await self._request(Endpoint.GET_CONNECTIONS)
         except:
             raise
         
-        return response
-        # match response.get("status")
-        
-    async def request(self, endpoint: Endpoint, **kwargs) -> ClientResponse:
-        """Make a request."""
+        return response.get("data") #list of connections
+    
+    async def getGraph(self) -> dict:
+        try:
+            response = await self._request(Endpoint.GET_GRAPH)
+        except:
+            raise
+
+        return response.get("data")
+    
+    async def getLogbook(self) -> list:
+        try:
+            response = await self._request(Endpoint.GET_LOGBOOK)
+        except:
+            raise
+
+        return response.get("data") #list of logbook entries
+    
+    async def getNotiSettings(self) -> dict:
+        try:
+            response = await self._request(Endpoint.GET_NOTI_SETTINGS)
+        except:
+            raise
+
+        return response.get("data")
+    
+    async def getConfig(self) -> dict:
+        try:
+            response = await self._request(Endpoint.GET_CONFIG)
+        except:
+            raise
+
+        return response.get("data")
+    
+
+    async def _setAuthFromTicket(self, response: ClientResponse) -> bool:
+        token = None
+        try:
+            token = response.get("ticket").get('token')
+        except AttributeError: #no ticket in response
+            try:
+                token = response.get("data").get('authTicket').get('token')
+            except AttributeError:
+                raise BadCredentialsError("No ticket found")
+
+        if token is not None:
+            self._accessToken = token
+            return True
+        else:
+            raise BadCredentialsError("No token found")
+
+
+    async def _request(self, endpoint: Endpoint, **kwargs) -> dict:
+        """
+        Make a request.
+        Does status checking
+        Does auto-redirect
+        Checks for data
+        """
         data = kwargs.get("data")
 
         headers = HEADERS
 
-        if endpoint != Endpoint.AUTH and self._accessToken is not None:
-            headers["authorization"] = "Bearer " + self._accessToken          
+        if endpoint != Endpoint.AUTH:
+            if self._accessToken is not None:
+                headers["authorization"] = "Bearer " + self._accessToken
         # need a way to call authenticate for accessToken if there isn't one
         # and then return to called function
 
@@ -81,7 +166,12 @@ class Auth():
         #Error checking
         match status:
             case None:
-                raise KeyError("There is no status in the response JSON")
+                if json_body.get("message") == "missing or malformed jwt":
+                    isAuthenticated = await self.authenticate()
+                    if isAuthenticated == True:
+                        return await self._request(endpoint,data=data)
+                else:
+                    raise KeyError("There is no status in the response JSON")
             case 0: #good status
                 pass
             case 2: #bad credentials
@@ -91,13 +181,44 @@ class Auth():
             case _: # Other status issue, need to see the json to determine issue
                 pass
         
-        #Wants a redirect, gives status 0 anyway
-        if json_body.get("data").get("redirect") is not None:
-            redirect = json_body.get("data").get("region")
-            self._host = DEFAULT_HOST.format("-"+redirect)
-            return await self.request(endpoint, data=data)
+        if json_body.get("data") is not None:
+        
+            #Wants a redirect, gives status 0 anyway
+            if json_body.get("data").get("redirect") is not None:
+                redirect = json_body.get("data").get("region")
+                self._host = DEFAULT_HOST.format("-"+redirect)
+                return await self._request(endpoint, data=data)
 
-        return json_body
+            return json_body
+        else:
+            raise UnexpectedResponseError("No data in response body")
         # return raw data with common (as in shared) error checking
 
 
+
+    # async def requestExact(self, endpoint: Endpoint, **kwargs) -> ClientResponse:
+    #     """
+    #     For testing only
+    #     """
+    #     data = kwargs.get("data")
+
+    #     headers = HEADERS
+
+    #     if endpoint != Endpoint.AUTH:
+    #         if self._accessToken is not None:
+    #             headers["authorization"] = "Bearer " + self._accessToken
+    #     # need a way to call authenticate for accessToken if there isn't one
+    #     # and then return to called function
+
+    #     method = endpoint.method
+    #     path = endpoint.path
+        
+    #     try:
+    #         response = await self._session.request(
+    #             method, f"{self._host}/{path}", json=data, headers=headers,
+    #         )
+    #         # json_body = await response.json()
+    #     except:
+    #         raise
+
+    #     return response

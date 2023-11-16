@@ -10,6 +10,8 @@ class LibreViewAPI():
     This API provides an async Python interface to the LibreView REST API
 
     This API also provides QoL functions, including:
+    - Modeled Data
+        - Classes for each kind of response section
     - Deltas
         - Minute-by-minute: delta between readings
         - Set interval: delta over a number of minutes up to x minutes (tbd)
