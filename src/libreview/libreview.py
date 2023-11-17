@@ -6,7 +6,7 @@ import itertools
 from textwrap import dedent
 
 from .const import Endpoint
-from .exceptions import CalledEarlyUpdateError
+from .exceptions import CalledEarlyUpdateError, UnexpectedResponseError
 
 
 class LibreViewAPI():
@@ -90,6 +90,20 @@ class LibreViewAPI():
 
         return list(itertools.islice(self._recentReadings,numReadings))
 
+    async def listConnections(self) -> list[Connection]:
+        try:
+            data = await self._auth.getConnections()
+        except:
+            raise
+        
+        if data is not None:
+            result = []
+            for connection in data:
+                result.append(Connection(**connection))
+            return result
+        raise UnexpectedResponseError("No data received from auth")
+
+
 class GlucoseReading():
     """
     This class represents a single glucose reading interpreted from raw data.
@@ -113,7 +127,36 @@ class GlucoseReading():
         return dedent(result).format(timestamp=self._timestamp,
                                      value=self._value,
                                      units=self._units,
-                                     trend=self._trendArrow)
+                                     trend=self._trendArrow
+                                    )
+    
+    async def getAbsoluteValue(self) -> int:
+        return self._mgdlValue
+
+class Connection():
+    def __init__(self, patientId: str, lastName: str, firstName: str, targetLow: int, targetHigh: int, **kwargs) -> None:
+        self._patientID = patientId
+        self._name = firstName + " " + lastName
+        self._targets = {"low": targetLow, "high": targetHigh} #targets are always in mg/dl
+
+    def __str__(self) -> str:
+        result = """\
+                 Name: {name}
+                 ID: {id}
+                 Range: {low} - {high}
+                 """
+        return dedent(result).format(name=self._name,
+                                     id=self._patientID,
+                                     low=self._targets.get("low"),
+                                     high=self._targets.get("high")
+                                    )
+
+    async def isWithinTarget(self, reading: GlucoseReading) -> bool:
+        value = await reading.getAbsoluteValue()
+        if value >= self._targets["low"] and value <= self._targets["high"]:
+            return True
+        return False
+
 
 # class Sensor():
 
@@ -141,7 +184,6 @@ class GlucoseReading():
 # class AccountData():
 
 
-# class Connection():
 
 
 
