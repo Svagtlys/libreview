@@ -9,3 +9,7 @@ class BadCredentialsError(Exception):
 class UnexpectedResponseError(Exception):
     """Raised when the response isn't otherwise incorrect but doesn't look like we expect"""
     pass
+
+class CalledEarlyUpdateError(Exception):
+    """Raised when a glucose update is requested too soon"""
+    pass

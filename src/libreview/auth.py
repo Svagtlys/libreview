@@ -1,4 +1,4 @@
-from aiohttp import ClientSession, ClientResponse
+from aiohttp import ClientSession, ClientResponse, TCPConnector
 import asyncio
 
 from .const import Endpoint, HEADERS, DEFAULT_HOST
@@ -21,7 +21,8 @@ class Auth():
 
     def __init__(self, email: str, password: str) -> None:
         """Initialize Auth"""
-        self._session = ClientSession()
+        connector = TCPConnector(limit=5)
+        self._session = ClientSession(connector=connector)
         # self._create_session()
         self._host = DEFAULT_HOST.format("")
         self._authInfo = {"email": email, "password": password}
@@ -58,6 +59,12 @@ class Auth():
 
         return isAuth
 
+
+    async def acceptTOU(self) -> bool:
+        """
+        To define, need testing capability (unaccepted tou)
+        """
+        return False
 
     async def getUser(self) -> dict:
         try:
@@ -182,13 +189,14 @@ class Auth():
                 pass
         
         if json_body.get("data") is not None:
-        
             #Wants a redirect, gives status 0 anyway
-            if json_body.get("data").get("redirect") is not None:
-                redirect = json_body.get("data").get("region")
-                self._host = DEFAULT_HOST.format("-"+redirect)
-                return await self._request(endpoint, data=data)
-
+            try:
+                if json_body.get("data").get("redirect") is not None:
+                    redirect = json_body.get("data").get("region")
+                    self._host = DEFAULT_HOST.format("-"+redirect)
+                    return await self._request(endpoint, data=data)
+            except AttributeError: #returns list, not dict, no redirect here
+                pass
             return json_body
         else:
             raise UnexpectedResponseError("No data in response body")

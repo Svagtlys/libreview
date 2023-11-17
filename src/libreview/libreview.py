@@ -1,13 +1,28 @@
 from __future__ import annotations
 from .auth import Auth
 from collections import deque
+from datetime import datetime 
+import itertools
+from textwrap import dedent
 
 from .const import Endpoint
+from .exceptions import CalledEarlyUpdateError
 
 
 class LibreViewAPI():
     """
     This API provides an async Python interface to the LibreView REST API
+
+    In order to maintain accurate reading history, I recommend selecting
+    one connection { listConenctions() then selectConnection(int) } and
+    sticking with it. Changing connections at this time will result in
+    having history of both. May make this compatible with multiple
+    connections in the future.
+
+    LibreView API details from this source:
+      https://libreview-unofficial.stoplight.io/'
+    
+    Thank you, FokkeZB! #WeAreNotWaiting
 
     This API also provides QoL functions, including:
     - Modeled Data
@@ -17,27 +32,63 @@ class LibreViewAPI():
         - Set interval: delta over a number of minutes up to x minutes (tbd)
     - Customized data
         - Receive only the latest reading instead of a long list of readings
+        - Receive only readings relevant to the chosen connection
         - Receive only data in the desired units (mg/dl or libreview-configured)
     """
 
     def __init__(self, auth: Auth, maxReadings: int=10) -> None:
         """Initialize the API and store the auth so we can make requests."""
         self._auth = auth
-        self._recentReadings = deque(maxlen=maxReadings)
+        if maxReadings < 1:
+            maxReadings = 1
+        self._recentReadings: deque[GlucoseReading] = deque(maxlen=maxReadings)
+        self._currentConnection = 0
+        self._lastUpdateReadings = datetime.now()
 
 
     async def authenticate(self) -> bool:
-        self._auth.authenticate()
-    
-    async def getLatestReading(self,connection: int) -> GlucoseReading:
-        
-        return GlucoseReading();
+        try:
+            return await self._auth.authenticate()
+        except:
+            raise
 
-    # async def _whatDoYouEvenCallThis(self) -> None:
-        
+    async def updateReadings(self) -> bool:
+        deltaSinceLast = datetime.now() - self._lastUpdateReadings
 
+        # Only grab readings at most once per minute, since that's how often
+        # the device will auto-send glucose levels
+        if deltaSinceLast.total_seconds() > 55:  
+            raise CalledEarlyUpdateError("Update called within 1 min of last update")
+        try:
+            data = await self._auth.getConnections()
+        except:
+            raise
 
+        reading = data[self._currentConnection].get("glucoseMeasurement")
+        if reading is not None:
+            self._recentReadings.appendleft(GlucoseReading(**reading))
+            return True
+        return False
 
+    async def getLatestReading(self) -> GlucoseReading:
+
+        try:
+            await self.updateReadings()
+        except:
+            raise
+
+        try:
+            result = self._recentReadings[0]
+        except IndexError:
+            raise IndexError("Not enough readings available")
+
+        return result
+
+    async def getLastXReadings(self, numReadings: int=1) -> list[GlucoseReading]:
+        if numReadings < 1 or numReadings > len(self._recentReadings):
+            raise IndexError("Provide a number greater than 0 and less than the maximum number of saved readings (" + len(self._recentReadings) + ")")
+
+        return list(itertools.islice(self._recentReadings,numReadings))
 
 class GlucoseReading():
     """
@@ -45,12 +96,57 @@ class GlucoseReading():
     """
 
     # can be init with GlucoseReading(**response["data"]["glucoseMeasurement"])
-    def __init__(self, Timestamp: str, ValueInMgPerDl: float, GlucoseUnits: int, Value: float, TrendArrow: int) -> None:
+    def __init__(self, Timestamp: str, ValueInMgPerDl: float, GlucoseUnits: int, Value: float, TrendArrow: int, **kwargs) -> None:
         self._timestamp = Timestamp
         self._mgdlValue = ValueInMgPerDl
         self._units = "mmol/l" if GlucoseUnits == 0 else "mg/dl"
         self._value = Value
         self._trendArrow = TrendArrow
+        self._otherData = kwargs
+
+    def __str__(self) -> str:
+        result = """\
+                 Timestamp: {timestamp}
+                 Value: {value} {units}
+                 Trend: {trend}\
+                 """
+        return dedent(result).format(timestamp=self._timestamp,
+                                     value=self._value,
+                                     units=self._units,
+                                     trend=self._trendArrow)
+
+# class Sensor():
+
+
+# class AlarmRules():
+
+
+
+# class GraphData():
+
+
+
+# class LogbookData():
+
+
+
+# class PatientDevice():
+
+
+
+# class UserData():
+
+# class AdditionalUserData():
+
+# class AccountData():
+
+
+# class Connection():
+
+
+
+
+
 
 """    
 getconnections
