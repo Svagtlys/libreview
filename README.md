@@ -9,7 +9,9 @@ import asyncio
 from libreview import auth, libreview
 
 async def main():
+  
   myAuth = auth.Auth("emailaddress","password")
+  
   myApi = libreview.LibreViewAPI(myAuth)
 
   response = await myApi.getLatestReading()
