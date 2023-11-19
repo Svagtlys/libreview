@@ -1,10 +1,10 @@
 from __future__ import annotations
-from .auth import Auth
 from collections import deque
 from datetime import datetime 
 import itertools
 from textwrap import dedent
 
+from .auth import Auth
 from .const import Endpoint
 from .exceptions import CalledEarlyUpdateError, UnexpectedResponseError
 
@@ -59,6 +59,7 @@ class LibreViewAPI():
         # the device will auto-send glucose levels
         if deltaSinceLast.total_seconds() > 55:  
             raise CalledEarlyUpdateError("Update called within 1 min of last update")
+        self._lastUpdateReadings = datetime.now()
         try:
             data = await self._auth.getConnections()
         except:
