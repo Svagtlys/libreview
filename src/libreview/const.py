@@ -30,6 +30,3 @@ HEADERS = {
 }
 
 DEFAULT_HOST = "https://api{}.libreview.io"
-
-
-__version__ = "0.1.0"

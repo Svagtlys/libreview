@@ -1,2 +1,4 @@
 src/libreview/__pycache__
 src/testing.py
+dist/
+pyproject.toml

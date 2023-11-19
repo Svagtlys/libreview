@@ -1,6 +1,6 @@
 [project]
 name = "libreview"
-dynamic = ["version"]
+version = "0.1.0"
 authors = [
   { name="Svagtlys", email="45446348+Svagtlys@users.noreply.github.com" },
 ]
