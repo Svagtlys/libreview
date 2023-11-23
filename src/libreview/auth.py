@@ -152,8 +152,14 @@ class Auth():
         headers = HEADERS
 
         if endpoint != Endpoint.AUTH:
-            if self._accessToken is not None:
-                headers["authorization"] = "Bearer " + self._accessToken
+            if self._accessToken is None:
+                try:
+                    await self.authenticate()
+                except:
+                    raise
+                if self._accessToken is None:
+                    raise BadCredentialsError("Bad credentials, cannot complete request")
+            headers["authorization"] = "Bearer " + self._accessToken
         # need a way to call authenticate for accessToken if there isn't one
         # and then return to called function
 
@@ -201,32 +207,3 @@ class Auth():
         else:
             raise UnexpectedResponseError("No data in response body")
         # return raw data with common (as in shared) error checking
-
-
-
-    # async def requestExact(self, endpoint: Endpoint, **kwargs) -> ClientResponse:
-    #     """
-    #     For testing only
-    #     """
-    #     data = kwargs.get("data")
-
-    #     headers = HEADERS
-
-    #     if endpoint != Endpoint.AUTH:
-    #         if self._accessToken is not None:
-    #             headers["authorization"] = "Bearer " + self._accessToken
-    #     # need a way to call authenticate for accessToken if there isn't one
-    #     # and then return to called function
-
-    #     method = endpoint.method
-    #     path = endpoint.path
-        
-    #     try:
-    #         response = await self._session.request(
-    #             method, f"{self._host}/{path}", json=data, headers=headers,
-    #         )
-    #         # json_body = await response.json()
-    #     except:
-    #         raise
-
-    #     return response

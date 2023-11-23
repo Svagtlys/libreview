@@ -2,3 +2,5 @@ src/libreview/__pycache__
 src/testing.py
 dist/
 pyproject.toml
+libreview.code-workspace
+glucose.csv

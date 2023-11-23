@@ -1,6 +1,7 @@
 from __future__ import annotations
 from collections import deque
 from datetime import datetime 
+from decimal import Decimal, getcontext
 import itertools
 from textwrap import dedent
 
@@ -43,7 +44,6 @@ class LibreViewAPI():
             maxReadings = 1
         self._recentReadings: deque[GlucoseReading] = deque(maxlen=maxReadings)
         self._currentConnection = 0
-        self._lastUpdateReadings = datetime.now()
 
 
     async def authenticate(self) -> bool:
@@ -53,13 +53,13 @@ class LibreViewAPI():
             raise
 
     async def updateReadings(self) -> bool:
-        deltaSinceLast = datetime.now() - self._lastUpdateReadings
-
-        # Only grab readings at most once per minute, since that's how often
-        # the device will auto-send glucose levels
-        if deltaSinceLast.total_seconds() > 55:  
-            raise CalledEarlyUpdateError("Update called within 1 min of last update")
-        self._lastUpdateReadings = datetime.now()
+        if len(self._recentReadings) > 0:
+            # Only grab readings at most once per minute, since that's how often
+            # the device will auto-send glucose levels
+            lastReadingTime = await self._recentReadings[0].timestampToDatetime()
+            deltaSinceLast = datetime.now() - lastReadingTime
+            if deltaSinceLast.total_seconds() < 60:  
+                raise CalledEarlyUpdateError("Update called within 1 min of last update")
         try:
             data = await self._auth.getConnections()
         except:
@@ -87,7 +87,7 @@ class LibreViewAPI():
 
     async def getLastXReadings(self, numReadings: int=1) -> list[GlucoseReading]:
         if numReadings < 1 or numReadings > len(self._recentReadings):
-            raise IndexError("Provide a number greater than 0 and less than the maximum number of saved readings (" + len(self._recentReadings) + ")")
+            raise IndexError("Provide a number greater than 0 and less than the maximum number of saved readings ({readings})".format(readings=len(self._recentReadings)))
 
         return list(itertools.islice(self._recentReadings,numReadings))
 
@@ -103,6 +103,113 @@ class LibreViewAPI():
                 result.append(Connection(**connection))
             return result
         raise UnexpectedResponseError("No data received from auth")
+
+    async def chooseConnection(self, connectionIndex: int) -> Connection:
+        """
+        Choose a connection by passing a positive int (1+)
+        """
+        
+        try:
+            data = await self._auth.getConnections()
+        except:
+            raise
+        
+        if data is not None:
+            if connectionIndex >= 1 and len(data) >= connectionIndex:
+                self._currentConnection = connectionIndex-1
+                return data[self._currentConnection]
+            else:
+                raise IndexError("Passed index is not valid")
+        raise UnexpectedResponseError("No data received from auth")
+
+    async def glucoseDeltaOverX(self, minToCheck: int=5) -> Decimal:
+        """
+        Finds latest reading and reading closest to minToCheck
+        Calculates change between them
+        """
+        if len(self._recentReadings) < 2:
+            raise IndexError("Not enough readings readings available")
+        latestReading = self._recentReadings[0]
+
+        currtime = datetime.now()
+        secToCheck = minToCheck*60
+
+        earliestReading = await self._getReadingXSecAgo(currtime, secToCheck)
+        
+        earliestValue = await earliestReading.getValue()
+        latestValue = await latestReading.getValue()
+        getcontext().prec = 1
+        earliestValue = Decimal(earliestValue)
+        latestValue = Decimal(latestValue)
+
+        print("{one}, {two}".format(one=earliestValue, two=latestValue))
+
+        glucoseDelta = latestValue - earliestValue
+
+        return glucoseDelta.normalize()
+
+
+    async def _getReadingXSecAgo(self, currtime: datetime, secToCheck) -> GlucoseReading:
+        if len(self._recentReadings) < 1:
+            raise IndexError("Not enough readings readings available")
+        for reading in self._recentReadings:
+            readingTime = await reading.timestampToDatetime()
+            if (currtime - readingTime).total_seconds() <= secToCheck:
+                earliestReading = reading
+            else:
+                break
+        return earliestReading
+
+    async def expectedGlucoseInX(self, futureTime: int=10) -> list:
+        """
+        Calculates rate of change over past amount of time (default 15 min)
+        Uses this to predictively calculate future glucose
+        """
+        if len(self._recentReadings) < 2:
+            raise IndexError("Not enough readings readings available")
+
+        listOfSlopes = [float]
+
+        currtime = datetime.now()
+        earliestTime = 15*60
+        
+        # for each reading between now and maxprevtime, find the slope/min between it and the next reading
+
+        earliestReading: GlucoseReading = await self._getReadingXSecAgo(currtime, earliestTime)
+        earliestTime: datetime = await earliestReading.timestampToDatetime()
+
+        while (currtime - earliestTime).total_seconds() > 60:
+            nextReading: GlucoseReading = await self._getReadingXSecAgo(currtime, (currtime-earliestTime).total_seconds())
+            
+            #calc slope and add to list
+            nextValue = await nextReading.getValue()
+            earliestValue = await earliestReading.getValue()
+
+            nextTime: datetime = await nextReading.timestampToDatetime()
+
+            changeInTime = (nextTime - earliestTime).total_seconds()
+            
+            print("{nv} {ev} {cit}".format(nv=nextValue,ev=earliestValue,cit=changeInTime))
+
+            slope: float = (nextValue - earliestValue)/changeInTime
+            listOfSlopes.append(slope)
+
+            #prep for next go round
+            earliestReading = nextReading
+            earliestTime: datetime = await earliestReading.timestampToDatetime()
+
+
+
+        # predictedMgdl = 0
+        # predictedValue = 0
+        # chosenUnits = 0
+        # predictedTrend = 3
+
+        # predictedReading = GlucoseReading(Timestamp=datetime.now().strftime("%m/%d/%Y %I:%M:%S %p"),ValueInMgPerDl=predictedMgdl, GlucoseUnits=chosenUnits, Value=predictedValue, TrendArrow=predictedTrend)
+        
+
+
+        return listOfSlopes
 
 
 class GlucoseReading():
@@ -131,8 +238,18 @@ class GlucoseReading():
                                      trend=self._trendArrow
                                     )
     
+    def __iter__(self) -> iter:
+        return iter([self._timestamp, self._value])
+
+    async def getValue(self) -> float:
+        return self._value
+
     async def getAbsoluteValue(self) -> int:
         return self._mgdlValue
+    
+    async def timestampToDatetime(self) -> datetime:
+        result = datetime.strptime(self._timestamp, '%m/%d/%Y %I:%M:%S %p')
+        return result
 
 class Connection():
     def __init__(self, patientId: str, lastName: str, firstName: str, targetLow: int, targetHigh: int, **kwargs) -> None:
