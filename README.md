@@ -8,9 +8,9 @@ LibreView API details from this source:
     
 Thank you, FokkeZB! #WeAreNotWaiting
 
-LibreView API uses Semantic Versioning 2.0 (to the best of my ability as a new programmer)
-
 https://semver.org/
+
+This project on perpetual hiatus due to lack of personal need. Consider using OAPS or AAPS instead.
 
 Quickstart (probably not working yet, just draft):
 
